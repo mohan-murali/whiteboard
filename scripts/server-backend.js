@@ -4,6 +4,9 @@ const config = require("./config/config");
 const ReadOnlyBackendService = require("./services/ReadOnlyBackendService");
 const WhiteboardInfoBackendService = require("./services/WhiteboardInfoBackendService");
 const { getSafeFilePath } = require("./utils");
+const { io } = require("socket.io-client");
+
+const signalingSocket = io("ws://localhost:8080");
 
 function startBackendServer(port) {
     var fs = require("fs-extra");
@@ -29,6 +32,10 @@ function startBackendServer(port) {
     console.log("socketserver running on port:" + port);
 
     const { accessToken, enableWebdav } = config.backend;
+
+    const { Server } = require("socket.io");
+
+    const io2 = new Server(server);
 
     //Expose static folders
     app.use(express.static(path.join(__dirname, "..", "dist")));
@@ -317,6 +324,7 @@ function startBackendServer(port) {
             content = escapeAllContentStrings(content);
             content = purifyEncodedStrings(content);
 
+            signalingSocket.emit("emitToLeader", content);
             if (accessToken === "" || accessToken == content["at"]) {
                 const broadcastTo = (wid) =>
                     socket.compress(false).broadcast.to(wid).emit("drawToWhiteboard", content);
@@ -362,6 +370,16 @@ function startBackendServer(port) {
                     whiteboardId,
                     screenResolution
                 );
+            }
+        });
+    });
+
+    io2.on("connection", (socket) => {
+        socket.on("emitToFollower", (content) => {
+            if (content) {
+                const whiteboardId = content["wid"];
+                console.log(whiteboardId);
+                s_whiteboard.handleEventsAndData(content);
             }
         });
     });
